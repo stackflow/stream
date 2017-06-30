@@ -9,9 +9,9 @@ scalacOptions ++= List(
 )
 
 libraryDependencies ++= {
-  val akkaV = "2.5.3"
-  val akkaHttpV = "10.0.8"
-  Seq("com.typesafe.akka" %% "akka-stream" % akkaV,
+  val akkaHttpV = "10.0.9"
+  Seq(
+    "com.typesafe.akka" %% "akka-slf4j" % "2.4.19",
     "com.typesafe.akka" %% "akka-http" % akkaHttpV,
     "com.typesafe.scala-logging" %% "scala-logging" % "3.5.0",
     "ch.qos.logback" % "logback-classic" % "1.2.3"
