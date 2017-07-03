@@ -1,18 +1,31 @@
-package com.lordmancer2.stream.net.client
+package com.lordmancer2.stream.hero.client
 
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
+import akka.http.scaladsl.model.headers.RawHeader
+import akka.http.scaladsl.model.{HttpHeader, HttpRequest, HttpResponse}
 import akka.stream.scaladsl.{Flow, Keep, Sink, Source, SourceQueueWithComplete}
 import akka.stream.{ActorMaterializer, OverflowStrategy, QueueOfferResult}
 import com.lordmancer2.stream.App
+import com.lordmancer2.stream.json._
 import com.typesafe.config.Config
 
+import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
 
 object Primary {
 
-  case class HeroProfile(userId: String, heroId: String)
+  case class Clan(clanId: String,
+                  roleId: Option[String])
+
+  case class HeroProfile(userId: String,
+                         heroId: String,
+                         raceId: String,
+                         classId: Option[String],
+                         name: String,
+                         level: Int,
+                         clan: Option[Clan],
+                         rankId: Option[String])
 
   implicit val ec: ExecutionContext = App.ec
 
@@ -37,7 +50,7 @@ object Primary {
       }))(Keep.left)
       .run()
 
-  def queueRequest(request: HttpRequest): Future[HttpResponse] = {
+  private def queueRequest(request: HttpRequest): Future[HttpResponse] = {
     val responsePromise = Promise[HttpResponse]()
     queue.offer(request -> responsePromise).flatMap {
       case QueueOfferResult.Enqueued => responsePromise.future
@@ -47,8 +60,21 @@ object Primary {
     }
   }
 
-  def requestHeroProfile(userId: String, heroId: String): Future[HttpResponse] = {
-    queueRequest(HttpRequest(uri = s"/users/$userId/heroes/$heroId/profile"))
+  private def queueUriRequest(uri: String)(implicit token: String): Future[String] = {
+    val headers = List[HttpHeader](RawHeader("Token", token))
+    val request = HttpRequest(headers = headers, uri = uri)
+    for {
+      response <- queueRequest(request)
+      responseAsString <- response.entity.toStrict(5.seconds).map(_.data.decodeString("UTF-8"))
+    } yield {
+      responseAsString
+    }
+  }
+
+  def requestHeroProfile(userId: String, heroId: String)(implicit token: String): Future[HeroProfile] = {
+    queueUriRequest(s"/users/$userId/heroes/$heroId/profile") map { response =>
+      mapper.readValue(response, classOf[HeroProfile])
+    }
   }
 
 }

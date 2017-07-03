@@ -8,7 +8,8 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import akka.stream.{Materializer, OverflowStrategy}
-import com.lordmancer2.stream.net.client.Primary
+import com.lordmancer2.stream.hero.client.Primary
+import com.lordmancer2.stream.hero.client.Primary.HeroProfile
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -21,9 +22,9 @@ trait WebServer {
 
   implicit val materializer: Materializer
 
-  def handler(profile: Any): Flow[Message, Message, NotUsed] = {
+  def handler(profile: HeroProfile)(implicit token: String): Flow[Message, Message, NotUsed] = {
     // new connection - new user actor
-    val stream = system.actorOf(Stream.props(profile))
+    val stream = system.actorOf(Stream.props())
 
     val incomingMessages: Sink[Message, NotUsed] = {
       Flow[Message]
@@ -43,7 +44,7 @@ trait WebServer {
         .actorRef[Stream.OutgoingMessage](10, OverflowStrategy.fail)
         .mapMaterializedValue { outActor =>
           // give the user actor a way to send messages out
-          stream ! Stream.Connected(outActor)
+          stream ! Stream.Connected(profile, outActor)
           NotUsed
         }
         .map {
@@ -57,17 +58,17 @@ trait WebServer {
 
   val route: Route = {
     pathPrefix("users" / JavaUUID / "heroes" / JavaUUID) { (userUUID, heroUUID) =>
-      onComplete(Primary.requestHeroProfile(userUUID.toString, heroUUID.toString)) {
-        case Success(profile) =>
-          pathEndOrSingleSlash {
-            headerValueByName("token") { token =>
+      headerValueByName("token") { implicit token =>
+        onComplete(Primary.requestHeroProfile(userUUID.toString, heroUUID.toString)) {
+          case Success(profile) =>
+            pathEndOrSingleSlash {
               get {
                 handleWebSocketMessages(handler(profile))
               }
             }
-          }
-        case Failure(ex) =>
-          complete(Forbidden, s"Error: ${ex.getMessage}")
+          case Failure(ex) =>
+            complete(Forbidden, s"Error: ${ex.getMessage}")
+        }
       }
     }
   }
